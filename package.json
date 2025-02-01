@@ -59,6 +59,7 @@
   "scripts": {
     "version": "genversion lib/version.js && git add lib/version.js",
     "test": "vows test/*_test.js",
+    "cookie-jar-test": "vows test/cookie_jar_test.js",
     "cover": "nyc --reporter=lcov --reporter=html vows test/*_test.js"
   },
   "engines": {
